@@ -1,0 +1,110 @@
+-- ReplicatedStorage script
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local nametag = script:Clone() -- Clone the script for each player
+nametag.Parent = game:GetService("ReplicatedStorage") -- Keep it in ReplicatedStorage
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local transparentParts = {} -- Store transparent parts for efficiency
+
+local function makeTransparent(part)
+  part.CanCollide = false
+  part.Transparency = 1
+  transparentParts[#transparentParts + 1] = part
+end
+
+local function removeTransparentPart(part)
+  table.Remove(transparentParts, transparentParts[part]) -- Remove from table efficiently
+  part.CanCollide = true
+  part.Transparency = 0
+end
+
+local function checkTransparency()
+  local character = Players.LocalPlayer.Character -- Use LocalPlayer for efficiency
+
+  if character then
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.DisplayDistance = 0 -- Hide default nametag
+
+    local head = character:WaitForChild("Head")
+
+    -- Loop through all players (optional optimization: check nearby players only)
+    for _, player in pairs(Players:GetPlayers()) do
+      if player.Character and player ~= Players.LocalPlayer then -- Ignore local player
+        local billboardGui = nametag:Clone() -- Clone for each player
+        billboardGui.Parent = player.Character.Head
+
+        local textLabel = billboardGui.TextLabel
+        textLabel.Text = player.Name
+        textLabel.TextStroke = Color3.fromRGB(0, 0, 0) -- Optional black text stroke for better visibility
+        textLabel.TextSize = 16 -- Adjust text size as needed
+
+        billboardGui.StudsOffset = Vector3.new(0, 3, 0) -- Position the text box above the head
+        billboardGui.ZIndex = 100 -- Ensure the text box stays on top
+      end
+    end
+
+    local hit = workspace:FindPartOnRay(character.Head:GetLookVector() * 100 + character.Head.Position, character.Head.Position - character.Head:GetLookVector() * 10000)
+    if hit then
+      if not transparentParts[hit] then
+        makeTransparent(hit)
+      end
+    end
+  end
+end
+
+local function applyDistortion(active)
+  local camera = character:WaitForChild("Head").Camera
+  if camera then
+    local focus = CFrame.lookAt(camera.CFrame.Position, camera.CFrame.Position + camera.CFrame.LookVector * 100)
+    camera.Focus = focus + Vector3.new(math.random(-0.5, 0.5), math.random(-0.5, 0.5), math.random(-0.5, 0.5)) -- Add random offset for distortion
+  end
+end
+
+-- Cleanup when player leaves
+Players.PlayerRemoving:Connect(function(player)
+  -- Find all transparent parts belonging to the leaving player
+  local leavingPlayerParts = {}
+  for _, part in pairs(transparentParts) do
+    if part.Parent and part.Parent:FindFirstAncestor(player.Character) then
+      leavingPlayerParts[#leavingPlayerParts + 1] = part
+    end
+  end
+
+  -- Remove parts and update transparentParts table efficiently
+  for _, part in pairs(leavingPlayerParts) do
+    removeTransparentPart(part)
+  end
+end)
+
+-- Refresh every 1 second
+RunService.Heartbeat:Wait(1):Connect(function()
+  checkTransparency()
+
+  -- Check for existing transparent parts and remove them if players left (optional)
+  -- This can be removed if PlayerRemoving event is enough
+  for _, part in pairs(transparentParts) do
+    local found = false
+    for _, player in pairs(Players:GetPlayers()) do
+      if player.Character then
+        if part.Parent == player.Character then
+          found = true
+          break
+        end
+      end
+    end
+    if not found then
+      removeTransparentPart(part)
+    end
+  end
+
+  -- Apply distortion based on transparent parts (optional)
+  applyDistortion(#transparentParts > 0)
+end)
+
+-- Add nametags to newly joined players (optional optimization: check for new characters only)
+Players.PlayerAdded:Connect(function(player)
+  player.CharacterAdded:Connect(function
